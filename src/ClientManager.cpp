@@ -1,4 +1,3 @@
-// Ôàéë: ClientManager.cpp (îáíîâë¸ííûé, èñïğàâëåííûé)
 #include "ClientManager.h"
 #include <QFile>
 #include <QFileInfo>
@@ -14,8 +13,8 @@ ClientManager::ClientManager(QObject* parent)
     socket = new QTcpSocket(this);
     connect(socket, &QTcpSocket::connected, this, &ClientManager::onConnected);
     connect(socket, &QTcpSocket::readyRead, this, &ClientManager::onReadyRead);
-    connect(socket,
-            QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::error),
+    connect(socket, &QTcpSocket::disconnected, this, &ClientManager::disconnected);
+    connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::error),
             this, &ClientManager::onErrorOccurred);
 }
 
@@ -106,8 +105,23 @@ void ClientManager::onConnected() {
 }
 
 void ClientManager::onErrorOccurred(QAbstractSocket::SocketError socketError) {
-    Q_UNUSED(socketError);
-    emit connectionError(socket->errorString());
+    QString errorMsg;
+    switch (socketError) {
+    case QAbstractSocket::ConnectionRefusedError:
+        errorMsg = "Ğ¡ĞµÑ€Ğ²ĞµÑ€ Ğ¾Ñ‚Ğ²ĞµÑ€Ğ³ Ğ¿Ğ¾Ğ´ĞºĞ»ÑÑ‡ĞµĞ½Ğ¸Ğµ";
+        break;
+    case QAbstractSocket::HostNotFoundError:
+        errorMsg = "Ğ¡ĞµÑ€Ğ²ĞµÑ€ Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½";
+        break;
+    case QAbstractSocket::NetworkError:
+        errorMsg = "Ğ¡ĞµÑ‚ĞµĞ²Ğ°Ñ Ğ¾ÑˆĞ¸Ğ±ĞºĞ°";
+        break;
+    default:
+        errorMsg = socket->errorString();
+    }
+
+    qWarning() << "Connection error:" << errorMsg;
+    emit connectionError(errorMsg);
 }
 
 void ClientManager::sendJson(const QJsonObject& baseObj, const QString& methodName) {
@@ -231,4 +245,8 @@ void ClientManager::onReadyRead() {
     } else {
         emit operationFinished(method, response["result"].toObject());
     }
+}
+
+bool ClientManager::isConnected() const {
+    return socket && socket->state() == QAbstractSocket::ConnectedState;
 }

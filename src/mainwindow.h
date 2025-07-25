@@ -9,32 +9,19 @@
 #include <QTreeWidget>
 #include <QGroupBox>
 #include <QSplitter>
+#include <QToolBar>
+#include <QProgressBar>
+#include <QJsonObject>
 #include "NetworkDiscovery.h"
 #include "ClientManager.h"
 
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow
+{
     Q_OBJECT
+
 public:
-    MainWindow(QWidget* parent = nullptr);
-    virtual ~MainWindow();
-
-private slots:
-    void onDiscoverClicked();
-    void onHostDiscovered(const HostInfo& host);
-    void onConnectClicked();
-    void onConnected();
-    void onConnectionError(const QString& errorString);
-    void onUserListReceived(const QStringList& users);
-    void onSystemInfoReceived(const QJsonObject& info);
-    void onFileSystemReceived(const QJsonArray& files);
-    void onFileUploadFinished(bool success, const QString& message);
-
-    void onFileSelected();
-    void onUploadFile();
-    void onDownloadFile();
-    void onSetPermissions();
-    void onManageUser();
-    void onManageService();
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
 
 private:
     // Основные виджеты
@@ -45,7 +32,6 @@ private:
     QListWidget *hostsList;
     QPushButton *discoverButton;
     QPushButton *connectButton;
-    QLabel *statusLabel;
 
     // Вкладка пользователей
     QWidget *usersTab;
@@ -80,17 +66,46 @@ private:
     QListWidget *serviceList;
     QPushButton *serviceControlButton;
 
+    // Управляющие объекты
     NetworkDiscovery* discovery;
     ClientManager* clientMgr;
+
+    // Данные
     QList<HostInfo> discoveredHosts;
     QString currentFilePath;
+    QLabel *statusLabel;
 
-    void setupConnectionTab();
-    void setupUsersTab();
-    void setupFilesTab();
-    void setupSystemTab();
-    void setupServicesTab();
+private:
+    void initUI();
+    void initConnections();
+    void setDarkTheme();
+
+    void createConnectionTab();
+    void createUsersTab();
+    void createFilesTab();
+    void createSystemTab();
+    void createServicesTab();
+
     void updateSystemInfo(const QJsonObject& info);
+
+private slots:
+    void onTestConnectionClicked();
+    void onDiscoverClicked();
+    void onHostDiscovered(const HostInfo& host);
+    void onConnectClicked();
+    void onConnected();
+    void onConnectionError(const QString& errorString);
+    void onUserListReceived(const QStringList& users);
+    void onSystemInfoReceived(const QJsonObject& info);
+    void onFileSystemReceived(const QJsonArray& files);
+    void onFileUploadFinished(bool success, const QString& message);
+
+    void onFileSelected();
+    void onUploadFile();
+    void onDownloadFile();
+    void onSetPermissions();
+    void onManageUser();
+    void onManageService();
 };
 
 #endif // MAINWINDOW_H

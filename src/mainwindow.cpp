@@ -1,4 +1,13 @@
 #include "mainwindow.h"
+#include <QApplication>
+#include <QStyleFactory>
+#include <QFont>
+#include <QToolBar>
+#include <QStatusBar>
+#include <QProgressBar>
+#include <QGroupBox>
+#include <QFormLayout>
+#include <QSplitter>
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -7,70 +16,165 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QGroupBox>
-#include <QFormLayout>
-#include <QSplitter>
-#include <QStyleFactory>
-#include <QToolBar>
-#include <QStatusBar>
-#include <QProgressBar>
-#include <QFont>
-#include <QApplication>
+#include <QMenuBar>
+#include <QActionGroup>
+#include <QPalette>
+#include <QSpacerItem>
+#include <QFileInfo>
 
-MainWindow::~MainWindow() {
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent),
+      discovery(nullptr),
+      clientMgr(nullptr),
+      statusLabel(nullptr)
+{
+    initUI();
+    initConnections();
+}
+
+MainWindow::~MainWindow()
+{
     delete discovery;
     delete clientMgr;
 }
 
-MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent),
-      tabWidget(nullptr),
-      connectionTab(nullptr),
-      hostsList(nullptr),
-      discoverButton(nullptr),
-      connectButton(nullptr),
-      statusLabel(nullptr),
-      usersTab(nullptr),
-      userListWidget(nullptr),
-      addUserButton(nullptr),
-      removeUserButton(nullptr),
-      changePasswordButton(nullptr),
-      filesTab(nullptr),
-      fileSystemTree(nullptr),
-      fileSelectButton(nullptr),
-      uploadButton(nullptr),
-      downloadButton(nullptr),
-      setPermissionsButton(nullptr),
-      filePathLabel(nullptr),
-      currentPathLabel(nullptr),
-      systemTab(nullptr),
-      osNameLabel(nullptr),
-      kernelLabel(nullptr),
-      uptimeLabel(nullptr),
-      cpuModelLabel(nullptr),
-      cpuCoresLabel(nullptr),
-      cpuUsageLabel(nullptr),
-      ramUsageLabel(nullptr),
-      diskList(nullptr),
-      servicesTab(nullptr),
-      serviceList(nullptr),
-      serviceControlButton(nullptr),
-      discovery(nullptr),
-      clientMgr(nullptr),
-      currentFilePath("")
+void MainWindow::initUI()
+{
+    setDarkTheme();
+
+    setWindowTitle("ОС Клиент");
+    resize(1200, 800);
+    setMinimumSize(1000, 700);
+
+    // Создание центрального виджета
+    QWidget *centralWidget = new QWidget(this);
+    setCentralWidget(centralWidget);
+
+    // Основной лейаут
+    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+    mainLayout->setSpacing(15);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+
+    // Виджет вкладок
+    tabWidget = new QTabWidget(centralWidget);
+    tabWidget->setTabPosition(QTabWidget::North);
+    tabWidget->setDocumentMode(true);
+    mainLayout->addWidget(tabWidget);
+
+    // Создание вкладок
+    createConnectionTab();
+    createUsersTab();
+    createFilesTab();
+    createSystemTab();
+    createServicesTab();
+
+    // Создание тулбара
+    QToolBar *toolBar = new QToolBar("Main Toolbar", this);
+    toolBar->setIconSize(QSize(28, 28));
+    toolBar->setMovable(false);
+    addToolBar(Qt::TopToolBarArea, toolBar);
+
+    // Действия
+    QAction* discoverAction = new QAction("Обнаружить", this);
+    QAction* connectAction = new QAction("Подключиться", this);
+    QAction* refreshAction = new QAction("Обновить", this);
+    QAction* testAction = new QAction("Тест связи", this);
+
+    toolBar->addAction(testAction);
+    toolBar->addAction(discoverAction);
+    toolBar->addAction(connectAction);
+    toolBar->addSeparator();
+    toolBar->addAction(refreshAction);
+
+    // Создание статусбара
+    statusLabel = new QLabel("Готов к работе", this);
+    QProgressBar* progressBar = new QProgressBar(this);
+    progressBar->setVisible(false);
+    progressBar->setFixedWidth(220);
+    progressBar->setTextVisible(true);
+
+    statusBar()->addWidget(new QLabel("Статус:", this));
+    statusBar()->addWidget(statusLabel, 1);
+    statusBar()->addPermanentWidget(progressBar);
+
+    // Установка шрифтов
+    QFont appFont("Segoe UI", 10);
+    QApplication::setFont(appFont);
+
+    // Инициализация управляющих объектов
+    discovery = new NetworkDiscovery(45454, this);
+    clientMgr = new ClientManager(this);
+
+    // Подключение действий тулбара
+    connect(testAction, &QAction::triggered, this, &MainWindow::onTestConnectionClicked);
+    connect(discoverAction, &QAction::triggered, this, &MainWindow::onDiscoverClicked);
+    connect(connectAction, &QAction::triggered, this, &MainWindow::onConnectClicked);
+    connect(refreshAction, &QAction::triggered, this, [this]() {
+        if (clientMgr && clientMgr->isConnected()) {
+            clientMgr->requestSystemInfo();
+            clientMgr->requestFileSystem(currentPathLabel->text());
+        }
+    });
+}
+
+void MainWindow::onTestConnectionClicked()
+{
+    QString testHost = QInputDialog::getText(this, "Тест связи", "Введите IP сервера:");
+    if (!testHost.isEmpty()) {
+        qDebug() << "Testing connection to" << testHost;
+        QTcpSocket testSocket;
+        testSocket.connectToHost(testHost, 45454);
+
+        if (testSocket.waitForConnected(2000)) {
+            QMessageBox::information(this, "Успех", "Соединение установлено!");
+            testSocket.disconnectFromHost();
+        } else {
+            QMessageBox::warning(this, "Ошибка", "Не удалось подключиться: " + testSocket.errorString());
+        }
+    }
+}
+
+void MainWindow::initConnections()
+{
+    connect(discoverButton, &QPushButton::clicked, this, &MainWindow::onDiscoverClicked);
+    connect(connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
+    connect(discovery, &NetworkDiscovery::hostDiscovered, this, &MainWindow::onHostDiscovered);
+    connect(clientMgr, &ClientManager::connected, this, &MainWindow::onConnected);
+    connect(clientMgr, &ClientManager::connectionError, this, &MainWindow::onConnectionError);
+    connect(clientMgr, &ClientManager::userListReceived, this, &MainWindow::onUserListReceived);
+    connect(clientMgr, &ClientManager::systemInfoReceived, this, &MainWindow::onSystemInfoReceived);
+    connect(clientMgr, &ClientManager::fileSystemReceived, this, &MainWindow::onFileSystemReceived);
+    connect(clientMgr, &ClientManager::fileUploadFinished, this, &MainWindow::onFileUploadFinished);
+    connect(clientMgr, &ClientManager::fileDownloadFinished, this, [this](bool success, const QString& message) {
+        if (success) {
+            QMessageBox::information(this, "Успех", "Файл успешно скачан");
+        } else {
+            QMessageBox::warning(this, "Ошибка", "Ошибка скачивания: " + message);
+        }
+    });
+    connect(fileSelectButton, &QPushButton::clicked, this, &MainWindow::onFileSelected);
+    connect(uploadButton, &QPushButton::clicked, this, &MainWindow::onUploadFile);
+    connect(downloadButton, &QPushButton::clicked, this, &MainWindow::onDownloadFile);
+    connect(setPermissionsButton, &QPushButton::clicked, this, &MainWindow::onSetPermissions);
+    connect(addUserButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
+    connect(removeUserButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
+    connect(changePasswordButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
+    connect(serviceControlButton, &QPushButton::clicked, this, &MainWindow::onManageService);
+}
+
+void MainWindow::setDarkTheme()
 {
     QApplication::setStyle(QStyleFactory::create("Fusion"));
 
-    // Тёмная темка
     QPalette darkPalette;
     darkPalette.setColor(QPalette::Window, QColor(53,53,53));
     darkPalette.setColor(QPalette::WindowText, Qt::white);
-    darkPalette.setColor(QPalette::Base, QColor(25,25,25));
+    darkPalette.setColor(QPalette::Base, QColor(35,35,35));
     darkPalette.setColor(QPalette::AlternateBase, QColor(53,53,53));
     darkPalette.setColor(QPalette::ToolTipBase, Qt::white);
     darkPalette.setColor(QPalette::ToolTipText, Qt::white);
     darkPalette.setColor(QPalette::Text, Qt::white);
-    darkPalette.setColor(QPalette::Button, QColor(53,53,53));
+    darkPalette.setColor(QPalette::Button, QColor(60,60,60));
     darkPalette.setColor(QPalette::ButtonText, Qt::white);
     darkPalette.setColor(QPalette::BrightText, Qt::red);
     darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
@@ -78,161 +182,129 @@ MainWindow::MainWindow(QWidget* parent)
     darkPalette.setColor(QPalette::HighlightedText, Qt::black);
 
     qApp->setPalette(darkPalette);
-    qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }");
 
-    setWindowTitle("OS-Client");
-    resize(1000, 700);
-
-    discovery = new NetworkDiscovery(45454, this);
-    clientMgr  = new ClientManager(this);
-
-    //Основной виджет и компоновка
-    QWidget *centralWidget = new QWidget(this);
-    setCentralWidget(centralWidget);
-    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
-    mainLayout->setSpacing(10);
-    mainLayout->setContentsMargins(15, 15, 15, 15);
-
-    //Панель инструментов
-    QToolBar *toolBar = new QToolBar("Main Toolbar", this);
-    toolBar->setIconSize(QSize(24, 24));
-    addToolBar(Qt::TopToolBarArea, toolBar);
-
-    //Элементы на панель инструментов
-    QAction* discoverAction = new QAction("Обнаружить серверы", this);
-    QAction* connectAction = new QAction("Подключиться", this);
-    toolBar->addAction(discoverAction);
-    toolBar->addAction(connectAction);
-    toolBar->addSeparator();
-
-    //Вкладки
-    tabWidget = new QTabWidget(centralWidget);
-    tabWidget->setTabPosition(QTabWidget::North);
-    tabWidget->setDocumentMode(true);
-    tabWidget->setStyleSheet(
-        "QTabWidget::pane { border: 1px solid #444; }"
-        "QTabBar::tab { background: #444; color: white; padding: 8px; }"
-        "QTabBar::tab:selected { background: #2a82da; }"
-        "QTabBar::tab:hover { background: #555; }"
-    );
-
-    mainLayout->addWidget(tabWidget);
-
-    // Настраиваем вкладки
-    setupConnectionTab();
-    setupUsersTab();
-    setupFilesTab();
-    setupSystemTab();
-    setupServicesTab();
-
-    // Прогресс-бар в статусной строке
-    QProgressBar* progressBar = new QProgressBar(this);
-    progressBar->setVisible(false);
-    progressBar->setFixedWidth(200);
-
-    // Статусная строка
-    statusBar()->addWidget(new QLabel("Статус:", this));
-    statusLabel = new QLabel("Готов к работе", this);
-    statusBar()->addWidget(statusLabel, 1);
-    statusBar()->addPermanentWidget(progressBar);
-
-    // Подключение сигналов
-    connect(discoverAction, &QAction::triggered, this, &MainWindow::onDiscoverClicked);
-    connect(connectAction, &QAction::triggered, this, &MainWindow::onConnectClicked);
-    connect(discovery, &NetworkDiscovery::hostDiscovered, this, &MainWindow::onHostDiscovered);
-
-    connect(clientMgr, &ClientManager::connected, this, &MainWindow::onConnected);
-    connect(clientMgr, &ClientManager::connectionError, this, &MainWindow::onConnectionError);
-    connect(clientMgr, &ClientManager::userListReceived, this, &MainWindow::onUserListReceived);
-    connect(clientMgr, &ClientManager::systemInfoReceived, this, &MainWindow::onSystemInfoReceived);
-    connect(clientMgr, &ClientManager::fileSystemReceived, this, &MainWindow::onFileSystemReceived);
-    connect(clientMgr, &ClientManager::fileUploadFinished,
-            this, &MainWindow::onFileUploadFinished);
-    connect(clientMgr, &ClientManager::fileDownloadFinished,
-            this, [this](bool success, const QString& message) {
-        if (success) {
-            QMessageBox::information(this, "Успех", "Файл успешно скачан");
-        } else {
-            QMessageBox::warning(this, "Ошибка", "Ошибка скачивания: " + message);
+    QString globalStyle = R"(
+        QWidget {
+            background-color: #353535;
+            color: #ffffff;
+            font-family: 'Segoe UI';
+            font-size: 10pt;
         }
-    });
-
-    // Установка шрифтов
-    QFont appFont("Segoe UI", 10);
-    qApp->setFont(appFont);
-
-    // Стилизация списков
-    QString listStyle = "QListWidget, QTreeWidget { background: #252525; border: 1px solid #444; }"
-                        "QListWidget::item, QTreeWidget::item { padding: 5px; }"
-                        "QListWidget::item:selected, QTreeWidget::item:selected { background: #2a82da; }";
-
-    hostsList->setStyleSheet(listStyle);
-    userListWidget->setStyleSheet(listStyle);
-    fileSystemTree->setStyleSheet(listStyle);
-    diskList->setStyleSheet(listStyle);
-    serviceList->setStyleSheet(listStyle);
-
-    // Заголовки для дерева файлов
-    fileSystemTree->setHeaderLabels({"Имя", "Тип", "Размер", "Права", "Владелец", "Группа"});
-    fileSystemTree->setColumnWidth(0, 250);
-    fileSystemTree->setColumnWidth(1, 80);
-    fileSystemTree->setColumnWidth(2, 100);
-    fileSystemTree->setColumnWidth(3, 80);
-    fileSystemTree->setColumnWidth(4, 120);
-    fileSystemTree->setColumnWidth(5, 120);
-
-    // Включить чередование цветов строк
-    hostsList->setAlternatingRowColors(true);
-    userListWidget->setAlternatingRowColors(true);
-    fileSystemTree->setAlternatingRowColors(true);
-    diskList->setAlternatingRowColors(true);
-    serviceList->setAlternatingRowColors(true);
+        QTabWidget::pane {
+            border: 1px solid #444;
+            border-radius: 8px;
+            background: #2a2a2a;
+        }
+        QTabBar::tab {
+            background: #444;
+            color: white;
+            padding: 8px 16px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            margin-right: 2px;
+        }
+        QTabBar::tab:selected {
+            background: #2a82da;
+        }
+        QTabBar::tab:hover {
+            background: #555;
+        }
+        QGroupBox {
+            border: 1px solid #444;
+            border-radius: 8px;
+            margin-top: 1.5ex;
+            padding-top: 10px;
+        }
+        QGroupBox::title {
+            color: #2a82da;
+            subcontrol-origin: margin;
+            subcontrol-position: top center;
+            padding: 0 8px;
+        }
+        QPushButton {
+            background-color: #444;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            min-width: 80px;
+        }
+        QPushButton:hover {
+            background-color: #555;
+        }
+        QPushButton:pressed {
+            background-color: #2a82da;
+        }
+        QListWidget, QTreeWidget {
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 6px;
+            alternate-background-color: #2d2d2d;
+        }
+        QListWidget::item, QTreeWidget::item {
+            padding: 8px;
+            border-radius: 4px;
+        }
+        QListWidget::item:selected, QTreeWidget::item:selected {
+            background: #2a82da;
+        }
+        QHeaderView::section {
+            background-color: #3a3a3a;
+            color: white;
+            padding: 4px;
+            border: none;
+        }
+        QLabel {
+            color: #ffffff;
+        }
+        QProgressBar {
+            border: 1px solid #444;
+            border-radius: 3px;
+            text-align: center;
+            background: #252525;
+        }
+        QProgressBar::chunk {
+            background: #2a82da;
+            border-radius: 2px;
+        }
+    )";
+    qApp->setStyleSheet(globalStyle);
 }
 
-void MainWindow::setupConnectionTab() {
+void MainWindow::createConnectionTab()
+{
     connectionTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(connectionTab);
-    layout->setContentsMargins(10, 10, 10, 10);
-    layout->setSpacing(10);
+    layout->setContentsMargins(15, 15, 15, 15);
+    layout->setSpacing(15);
 
     QLabel *titleLabel = new QLabel("Обнаружение серверов", connectionTab);
     titleLabel->setStyleSheet("font-size: 14pt; font-weight: bold; color: #2a82da;");
     layout->addWidget(titleLabel);
 
-    // Список хостов
     hostsList = new QListWidget(connectionTab);
     hostsList->setMinimumHeight(200);
-    layout->addWidget(hostsList);
+    hostsList->setAlternatingRowColors(true);
+    layout->addWidget(hostsList, 1);
 
-    // Кнопки
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     discoverButton = new QPushButton("Обновить список", connectionTab);
     connectButton = new QPushButton("Подключиться", connectionTab);
 
-    // Стилизация кнопок
-    QString buttonStyle = "QPushButton { background: #444; color: white; padding: 8px; border: none; }"
-                          "QPushButton:hover { background: #555; }"
-                          "QPushButton:pressed { background: #2a82da; }";
-
-    discoverButton->setStyleSheet(buttonStyle);
-    connectButton->setStyleSheet(buttonStyle);
-
     buttonLayout->addWidget(discoverButton);
     buttonLayout->addWidget(connectButton);
+    buttonLayout->addStretch();
     layout->addLayout(buttonLayout);
-
-    // Подключение кнопок
-    connect(discoverButton, &QPushButton::clicked, this, &MainWindow::onDiscoverClicked);
-    connect(connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
 
     tabWidget->addTab(connectionTab, "Подключение");
 }
 
-void MainWindow::setupUsersTab() {
+void MainWindow::createUsersTab()
+{
     usersTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(usersTab);
-    layout->setContentsMargins(10, 10, 10, 10);
-    layout->setSpacing(10);
+    layout->setContentsMargins(15, 15, 15, 15);
+    layout->setSpacing(15);
 
     QLabel *titleLabel = new QLabel("Управление пользователями", usersTab);
     titleLabel->setStyleSheet("font-size: 14pt; font-weight: bold; color: #2a82da;");
@@ -240,43 +312,29 @@ void MainWindow::setupUsersTab() {
 
     userListWidget = new QListWidget(usersTab);
     userListWidget->setMinimumHeight(300);
-    layout->addWidget(userListWidget);
+    userListWidget->setAlternatingRowColors(true);
+    layout->addWidget(userListWidget, 1);
 
-    // Кнопки управления пользователями
     QHBoxLayout *buttonLayout = new QHBoxLayout();
-    addUserButton = new QPushButton("Добавить", usersTab);
-    removeUserButton = new QPushButton("Удалить", usersTab);
+    addUserButton = new QPushButton("Добавить пользователя", usersTab);
+    removeUserButton = new QPushButton("Удалить пользователя", usersTab);
     changePasswordButton = new QPushButton("Сменить пароль", usersTab);
-
-    // Стилизация кнопок
-    QString buttonStyle = "QPushButton { background: #444; color: white; padding: 8px; border: none; }"
-                          "QPushButton:hover { background: #555; }"
-                          "QPushButton:pressed { background: #2a82da; }";
-
-    addUserButton->setStyleSheet(buttonStyle);
-    removeUserButton->setStyleSheet(buttonStyle);
-    changePasswordButton->setStyleSheet(buttonStyle);
 
     buttonLayout->addWidget(addUserButton);
     buttonLayout->addWidget(removeUserButton);
     buttonLayout->addWidget(changePasswordButton);
     buttonLayout->addStretch();
-
     layout->addLayout(buttonLayout);
-
-    // Подключение кнопок
-    connect(addUserButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
-    connect(removeUserButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
-    connect(changePasswordButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
 
     tabWidget->addTab(usersTab, "Пользователи");
 }
 
-void MainWindow::setupFilesTab() {
+void MainWindow::createFilesTab()
+{
     filesTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(filesTab);
-    layout->setContentsMargins(10, 10, 10, 10);
-    layout->setSpacing(10);
+    layout->setContentsMargins(15, 15, 15, 15);
+    layout->setSpacing(15);
 
     QLabel *titleLabel = new QLabel("Файловая система", filesTab);
     titleLabel->setStyleSheet("font-size: 14pt; font-weight: bold; color: #2a82da;");
@@ -288,57 +346,49 @@ void MainWindow::setupFilesTab() {
     currentPathLabel->setStyleSheet("font-weight: bold; color: #2a82da;");
 
     pathLayout->addWidget(pathLabel);
-    pathLayout->addWidget(currentPathLabel);
+    pathLayout->addWidget(currentPathLabel, 1);
     pathLayout->addStretch();
     layout->addLayout(pathLayout);
 
     fileSystemTree = new QTreeWidget(filesTab);
     fileSystemTree->setMinimumHeight(300);
-    fileSystemTree->setIconSize(QSize(24, 24));
+    fileSystemTree->setHeaderLabels({"Имя", "Тип", "Размер", "Права", "Владелец", "Группа"});
+    fileSystemTree->setColumnWidth(0, 250);
+    fileSystemTree->setAlternatingRowColors(true);
     layout->addWidget(fileSystemTree, 1);
 
     QGridLayout *fileGridLayout = new QGridLayout();
-
     fileSelectButton = new QPushButton("Выбрать файл", filesTab);
     filePathLabel = new QLabel("Файл не выбран", filesTab);
     filePathLabel->setStyleSheet("color: #aaa;");
 
     uploadButton = new QPushButton("Загрузить", filesTab);
     downloadButton = new QPushButton("Скачать", filesTab);
-    setPermissionsButton = new QPushButton("Права доступа", filesTab);
-
-    QString buttonStyle = "QPushButton { background: #444; color: white; padding: 8px; border: none; }"
-                          "QPushButton:hover { background: #555; }"
-                          "QPushButton:pressed { background: #2a82da; }";
-
-    fileSelectButton->setStyleSheet(buttonStyle);
-    uploadButton->setStyleSheet(buttonStyle);
-    downloadButton->setStyleSheet(buttonStyle);
-    setPermissionsButton->setStyleSheet(buttonStyle);
+    setPermissionsButton = new QPushButton("Изменить права", filesTab);
 
     fileGridLayout->addWidget(fileSelectButton, 0, 0);
     fileGridLayout->addWidget(filePathLabel, 0, 1, 1, 3);
     fileGridLayout->addWidget(uploadButton, 1, 0);
     fileGridLayout->addWidget(downloadButton, 1, 1);
     fileGridLayout->addWidget(setPermissionsButton, 1, 2);
+    fileGridLayout->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum), 1, 3);
 
     layout->addLayout(fileGridLayout);
-
-    connect(fileSelectButton, &QPushButton::clicked, this, &MainWindow::onFileSelected);
-    connect(uploadButton, &QPushButton::clicked, this, &MainWindow::onUploadFile);
-    connect(downloadButton, &QPushButton::clicked, this, &MainWindow::onDownloadFile);
-    connect(setPermissionsButton, &QPushButton::clicked, this, &MainWindow::onSetPermissions);
-
     tabWidget->addTab(filesTab, "Файловая система");
 }
 
-void MainWindow::setupSystemTab() {
+void MainWindow::createSystemTab()
+{
     systemTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(systemTab);
+    layout->setContentsMargins(15, 15, 15, 15);
+    layout->setSpacing(15);
 
     // Информация об ОС
     QGroupBox *osGroup = new QGroupBox("Операционная система", systemTab);
     QFormLayout *osLayout = new QFormLayout(osGroup);
+    osLayout->setContentsMargins(15, 20, 15, 15);
+    osLayout->setSpacing(10);
     osNameLabel = new QLabel("Неизвестно", osGroup);
     kernelLabel = new QLabel("Неизвестно", osGroup);
     uptimeLabel = new QLabel("Неизвестно", osGroup);
@@ -349,6 +399,8 @@ void MainWindow::setupSystemTab() {
     // Информация о процессоре
     QGroupBox *cpuGroup = new QGroupBox("Процессор", systemTab);
     QFormLayout *cpuLayout = new QFormLayout(cpuGroup);
+    cpuLayout->setContentsMargins(15, 20, 15, 15);
+    cpuLayout->setSpacing(10);
     cpuModelLabel = new QLabel("Неизвестно", cpuGroup);
     cpuCoresLabel = new QLabel("Неизвестно", cpuGroup);
     cpuUsageLabel = new QLabel("Неизвестно", cpuGroup);
@@ -359,13 +411,17 @@ void MainWindow::setupSystemTab() {
     // Информация о памяти
     QGroupBox *ramGroup = new QGroupBox("Память", systemTab);
     QFormLayout *ramLayout = new QFormLayout(ramGroup);
+    ramLayout->setContentsMargins(15, 20, 15, 15);
+    ramLayout->setSpacing(10);
     ramUsageLabel = new QLabel("Неизвестно", ramGroup);
     ramLayout->addRow("Использование:", ramUsageLabel);
 
     // Диски
     QGroupBox *diskGroup = new QGroupBox("Диски", systemTab);
     QVBoxLayout *diskLayout = new QVBoxLayout(diskGroup);
+    diskLayout->setContentsMargins(10, 20, 10, 10);
     diskList = new QListWidget(diskGroup);
+    diskList->setAlternatingRowColors(true);
     diskLayout->addWidget(diskList);
 
     // Компоновка вкладки
@@ -374,41 +430,59 @@ void MainWindow::setupSystemTab() {
     splitter->addWidget(cpuGroup);
     splitter->addWidget(ramGroup);
     splitter->addWidget(diskGroup);
-    layout->addWidget(splitter);
+    splitter->setSizes({200, 150, 100, 200});
+    layout->addWidget(splitter, 1);
 
     tabWidget->addTab(systemTab, "Система");
 }
 
-void MainWindow::setupServicesTab() {
+void MainWindow::createServicesTab()
+{
     servicesTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(servicesTab);
+    layout->setContentsMargins(15, 15, 15, 15);
+    layout->setSpacing(15);
+
+    QLabel *titleLabel = new QLabel("Управление службами", servicesTab);
+    titleLabel->setStyleSheet("font-size: 14pt; font-weight: bold; color: #2a82da;");
+    layout->addWidget(titleLabel);
 
     serviceList = new QListWidget(servicesTab);
-    layout->addWidget(serviceList);
+    serviceList->setMinimumHeight(300);
+    serviceList->setAlternatingRowColors(true);
+    layout->addWidget(serviceList, 1);
 
     serviceControlButton = new QPushButton("Управление службой", servicesTab);
     layout->addWidget(serviceControlButton);
 
-    connect(serviceControlButton, &QPushButton::clicked, this, &MainWindow::onManageService);
-
     tabWidget->addTab(servicesTab, "Службы");
 }
 
-// Реализации слотов
+// Реализация слотов
 void MainWindow::onDiscoverClicked() {
     hostsList->clear();
     discoveredHosts.clear();
+
+    // Тестовый хост для ручной проверки
+    HostInfo testHost;
+    testHost.address = "127.0.0.1"; // или реальный IP сервера
+    testHost.port = 45454;
+    discoveredHosts.append(testHost);
+    hostsList->addItem(QString("%1:%2").arg(testHost.address).arg(testHost.port));
+
+    // Стандартное обнаружение
     discovery->startListening();
-    statusLabel->setText("Поиск серверов...");
 }
 
-void MainWindow::onHostDiscovered(const HostInfo& host) {
+void MainWindow::onHostDiscovered(const HostInfo& host)
+{
     discoveredHosts.append(host);
     hostsList->addItem(QString("%1:%2").arg(host.address).arg(host.port));
     statusLabel->setText(QString("Найдено серверов: %1").arg(discoveredHosts.size()));
 }
 
-void MainWindow::onConnectClicked() {
+void MainWindow::onConnectClicked()
+{
     int idx = hostsList->currentRow();
     if (idx < 0 || idx >= discoveredHosts.size()) {
         QMessageBox::warning(this, "Ошибка", "Выберите сервер из списка.");
@@ -419,7 +493,8 @@ void MainWindow::onConnectClicked() {
     statusLabel->setText(QString("Подключение к %1:%2...").arg(h.address).arg(h.port));
 }
 
-void MainWindow::onConnected() {
+void MainWindow::onConnected()
+{
     userListWidget->clear();
     clientMgr->requestUserList();
     clientMgr->requestSystemInfo();
@@ -428,22 +503,26 @@ void MainWindow::onConnected() {
     tabWidget->setCurrentIndex(1); // Переключение на вкладку пользователей
 }
 
-void MainWindow::onConnectionError(const QString& errorString) {
+void MainWindow::onConnectionError(const QString& errorString)
+{
     QMessageBox::critical(this, "Ошибка подключения", errorString);
     statusLabel->setText("Ошибка подключения: " + errorString);
 }
 
-void MainWindow::onUserListReceived(const QStringList& users) {
+void MainWindow::onUserListReceived(const QStringList& users)
+{
     userListWidget->clear();
     userListWidget->addItems(users);
 }
 
-void MainWindow::onSystemInfoReceived(const QJsonObject& info) {
+void MainWindow::onSystemInfoReceived(const QJsonObject& info)
+{
     updateSystemInfo(info);
     statusLabel->setText("Системная информация обновлена");
 }
 
-void MainWindow::updateSystemInfo(const QJsonObject& info) {
+void MainWindow::updateSystemInfo(const QJsonObject& info)
+{
     // Общая информация
     osNameLabel->setText(info["os_name"].toString());
     kernelLabel->setText(info["kernel_version"].toString());
@@ -487,7 +566,8 @@ void MainWindow::updateSystemInfo(const QJsonObject& info) {
     }
 }
 
-void MainWindow::onFileSystemReceived(const QJsonArray& files) {
+void MainWindow::onFileSystemReceived(const QJsonArray& files)
+{
     fileSystemTree->clear();
 
     for (const QJsonValue& fileVal : files) {
@@ -506,7 +586,8 @@ void MainWindow::onFileSystemReceived(const QJsonArray& files) {
     }
 }
 
-void MainWindow::onFileUploadFinished(bool success, const QString& message) {
+void MainWindow::onFileUploadFinished(bool success, const QString& message)
+{
     if (success) {
         QMessageBox::information(this, "Успех", "Файл успешно загружен");
     } else {
@@ -514,7 +595,8 @@ void MainWindow::onFileUploadFinished(bool success, const QString& message) {
     }
 }
 
-void MainWindow::onFileSelected() {
+void MainWindow::onFileSelected()
+{
     QString filePath = QFileDialog::getOpenFileName(this, "Выберите файл");
     if (!filePath.isEmpty()) {
         currentFilePath = filePath;
@@ -522,7 +604,8 @@ void MainWindow::onFileSelected() {
     }
 }
 
-void MainWindow::onUploadFile() {
+void MainWindow::onUploadFile()
+{
     if (currentFilePath.isEmpty()) {
         QMessageBox::warning(this, "Ошибка", "Файл не выбран");
         return;
@@ -531,18 +614,11 @@ void MainWindow::onUploadFile() {
     QString remotePath = currentPathLabel->text();
     if (remotePath.isEmpty()) remotePath = "/";
 
-    // Показываем прогресс
-    QProgressBar* progressBar = qobject_cast<QProgressBar*>(statusBar()->children().last());
-    if (progressBar) {
-        progressBar->setVisible(true);
-        progressBar->setRange(0, 0);
-    }
-    statusLabel->setText("Загрузка файла на сервер...");
-
     clientMgr->uploadFile(currentFilePath, remotePath);
 }
 
-void MainWindow::onDownloadFile() {
+void MainWindow::onDownloadFile()
+{
     QTreeWidgetItem* item = fileSystemTree->currentItem();
     if (!item) {
         QMessageBox::warning(this, "Ошибка", "Файл не выбран");
@@ -558,7 +634,8 @@ void MainWindow::onDownloadFile() {
     }
 }
 
-void MainWindow::onSetPermissions() {
+void MainWindow::onSetPermissions()
+{
     QTreeWidgetItem* item = fileSystemTree->currentItem();
     if (!item) {
         QMessageBox::warning(this, "Ошибка", "Файл не выбран");
@@ -578,37 +655,43 @@ void MainWindow::onSetPermissions() {
     }
 }
 
-void MainWindow::onManageUser() {
-    QString action = QInputDialog::getItem(this, "Управление пользователями",
-        "Действие:", {"Добавить", "Удалить", "Изменить пароль"}, 0, false);
-
-    if (action.isEmpty()) return;
-
-    QString username;
-    if (action != "Добавить") {
-        username = QInputDialog::getText(this, "Пользователь", "Имя пользователя:");
-        if (username.isEmpty()) return;
+void MainWindow::onManageUser()
+{
+    QPushButton* button = qobject_cast<QPushButton*>(sender());
+    QString action;
+    if (button == addUserButton) {
+        action = "Добавить";
+    } else if (button == removeUserButton) {
+        action = "Удалить";
+    } else if (button == changePasswordButton) {
+        action = "Изменить пароль";
+    } else {
+        return;
     }
 
     if (action == "Добавить") {
-        username = QInputDialog::getText(this, "Новый пользователь", "Имя пользователя:");
+        QString username = QInputDialog::getText(this, "Новый пользователь", "Имя пользователя:");
         if (username.isEmpty()) return;
-
         QString password = QInputDialog::getText(this, "Пароль", "Пароль:", QLineEdit::Password);
         clientMgr->addUser(username, password);
+    } else {
+        int idx = userListWidget->currentRow();
+        if (idx < 0) {
+            QMessageBox::warning(this, "Ошибка", "Выберите пользователя");
+            return;
+        }
+        QString username = userListWidget->item(idx)->text();
+        if (action == "Удалить") {
+            clientMgr->removeUser(username);
+        } else if (action == "Изменить пароль") {
+            QString password = QInputDialog::getText(this, "Новый пароль", "Пароль:", QLineEdit::Password);
+            clientMgr->changeUserPassword(username, password);
+        }
     }
-    else if (action == "Удалить") {
-        clientMgr->removeUser(username);
-    }
-    else if (action == "Изменить пароль") {
-        QString password = QInputDialog::getText(this, "Новый пароль", "Пароль:", QLineEdit::Password);
-        clientMgr->changeUserPassword(username, password);
-    }
-
-    statusLabel->setText(action + " пользователя...");
 }
 
-void MainWindow::onManageService() {
+void MainWindow::onManageService()
+{
     QListWidgetItem* item = serviceList->currentItem();
     if (!item) {
         QMessageBox::warning(this, "Ошибка", "Служба не выбрана");

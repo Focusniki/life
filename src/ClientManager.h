@@ -13,6 +13,8 @@ class ClientManager : public QObject {
 public:
     explicit ClientManager(QObject* parent = nullptr);
 
+    bool isConnected() const;
+
     void connectToServer(const QString& host, quint16 port);
 
     void requestUserList();
@@ -30,6 +32,7 @@ public:
 
 signals:
     void connected();
+    void disconnected();
     void connectionError(const QString& errorString);
 
     void userListReceived(const QStringList& users);
