@@ -99,6 +99,7 @@ private slots:
     void onSystemInfoReceived(const QJsonObject& info);
     void onFileSystemReceived(const QJsonArray& files);
     void onFileUploadFinished(bool success, const QString& message);
+    void onServiceListReceived(const QJsonArray& services);
 
     void onFileSelected();
     void onUploadFile();

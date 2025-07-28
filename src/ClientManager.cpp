@@ -1,3 +1,4 @@
+#define WIN32_LEAN_AND_MEAN
 #include "ClientManager.h"
 #include <QFile>
 #include <QFileInfo>
@@ -172,6 +173,8 @@ void ClientManager::requestProcessList() {
     sendJson(request, "getProcessList");
 }
 
+
+
 void ClientManager::onReadyRead() {
     QDataStream in(socket);
     in.setVersion(QDataStream::Qt_5_14);
@@ -227,6 +230,8 @@ void ClientManager::onReadyRead() {
         emit fileSystemReceived(response["result"].toArray());
     } else if (method == "getProcessList") {
         emit processListReceived(response["result"].toArray());
+    } else if (method == "getServiceList") {
+        emit serviceListReceived(response["result"].toArray());
     } else if (method == "downloadFile") {
         QJsonObject result = response["result"].toObject();
         QString savePath = result["savePath"].toString();
@@ -249,4 +254,11 @@ void ClientManager::onReadyRead() {
 
 bool ClientManager::isConnected() const {
     return socket && socket->state() == QAbstractSocket::ConnectedState;
+}
+
+void ClientManager::requestServiceList()
+{
+    QJsonObject request;
+    request["method"] = "getServiceList";
+    sendJson(request, "getServiceList");
 }

@@ -21,6 +21,7 @@ public:
     void requestSystemInfo();
     void requestFileSystem(const QString& path);
     void requestProcessList();
+    void requestServiceList();
     void addUser(const QString& username, const QString& password);
     void removeUser(const QString& username);
     void changeUserPassword(const QString& username, const QString& password);
@@ -40,6 +41,7 @@ signals:
     void fileSystemReceived(const QJsonArray& files);
     void processListReceived(const QJsonArray& processes);
     void operationFinished(const QString& methodName, const QJsonObject& result);
+    void serviceListReceived(const QJsonArray& services);
 
     void fileDownloadFinished(bool success, const QString& message);
     void fileUploadFinished(bool success, const QString& message);

@@ -2,6 +2,7 @@
 #include <QNetworkDatagram>
 #include <QDebug>
 #include <QNetworkInterface>
+#include <QHostAddress>
 #include <QAbstractSocket>
 
 NetworkDiscovery::NetworkDiscovery(quint16 discoveryPort, QObject* parent)
@@ -24,13 +25,6 @@ void NetworkDiscovery::startListening() {
 
     // Создаем низкоуровневый UDP-сокет для широковещательной отправки
     QUdpSocket broadcastSocket;
-    #ifdef Q_OS_WIN
-        #include <winsock2.h>
-        broadcastSocket.setSocketOption(QAbstractSocket::SocketOption, SO_BROADCAST, 1);
-    #else
-        broadcastSocket.setSocketOption(QAbstractSocket::SocketOption, SO_BROADCAST, 1);
-    #endif
-
     QByteArray query = "Открытие_обзора_ОС";
     if (broadcastSocket.writeDatagram(query, QHostAddress::Broadcast, port_) == -1) {
         qWarning() << "Broadcast send error:" << broadcastSocket.errorString();

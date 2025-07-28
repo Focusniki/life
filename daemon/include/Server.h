@@ -30,6 +30,7 @@ public:
     QStringList getUserList() const;
     QJsonArray getFileSystem(const QString& path) const;
     QJsonArray getProcessList() const;
+    QJsonArray getServiceList() const;
 
     // System management methods
     bool addUser(const QString& username, const QString& password);

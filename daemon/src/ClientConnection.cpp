@@ -52,7 +52,7 @@ void ClientConnection::onReadyRead()
     }
 }
 
-void ClientConnection::processRequest(const QJsonObject& request)
+void ClientConnection::processRequest(const QJsonObject& request) // Процессинг запроса
 {
     QJsonObject response;
     response["jsonrpc"] = "2.0";
@@ -61,7 +61,7 @@ void ClientConnection::processRequest(const QJsonObject& request)
     QString method = request["method"].toString();
     QJsonObject params = request["params"].toObject();
 
-    if (method == "getSystemInfo") {
+	if (method == "getSystemInfo") { // Лучше наверное через switch case реализовать
         response["result"] = server->getSystemInfo();
     }
     else if (method == "getUserList") {
@@ -125,6 +125,9 @@ void ClientConnection::processRequest(const QJsonObject& request)
         QJsonObject result;
         result["data"] = QString::fromUtf8(fileData.toBase64());
         response["result"] = result;
+    }
+    else if (method == "getServiceList") {
+        response["result"] = server->getServiceList();
     }
     else {
         response["error"] = "Unknown method";

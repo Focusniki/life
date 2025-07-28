@@ -1,9 +1,3 @@
-#ifdef Q_OS_WIN
-#include <winsock2.h>
-#else
-#include <sys/>
-#endif
-
 #include "Server.h"
 #include "ClientConnection.h"
 #include <QJsonDocument>
@@ -33,7 +27,7 @@ void Server::startServer(quint16 port)
 
     discoverySocket = new QUdpSocket(this);
 
-    discoverySocket->setSocketOption(QAbstractSocket::BroadcastSocketOption, 1); //Тут ошибка, завтра пофикшу
+    discoverySocket->setSocketOption(QAbstractSocket::MulticastTtlOption, 1);
 
     if (!discoverySocket->bind(QHostAddress::Any, port,
                               QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
@@ -473,7 +467,27 @@ QJsonObject Server::getUptimeInfo() const
         }
         file.close();
     }
-#endif
-
+#endif    
     return uptime;
+}
+
+QJsonArray Server::getServiceList() const
+{
+    QJsonArray services;
+#ifdef Q_OS_UNIX
+    QProcess systemctl;
+    systemctl.start("systemctl", {"list-units", "--type=service", "--all", "--no-legend", "--plain"});
+    systemctl.waitForFinished();
+
+    QString output = systemctl.readAllStandardOutput();
+    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+
+    for (const QString& line : lines) {
+        QStringList parts = line.simplified().split(' ');
+        if (parts.size() > 0) {
+            services.append(parts[0]);
+        }
+    }
+#endif
+    return services;
 }

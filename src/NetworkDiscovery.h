@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QUdpSocket>
+#include <QString>
 
 struct HostInfo {
     QString address;
@@ -23,6 +24,9 @@ private:
     QUdpSocket* udpSocket;
     quint16 port_;   // порт для Discovery (тот же, что у сервера)
     quint16 lastReceivedTcpPort_;
+
+
+    QString getLocalIp();
 };
 
 #endif // NETWORKDISCOVERY_H

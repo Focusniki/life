@@ -1,3 +1,4 @@
+#define WIN32_LEAN_AND_MEAN
 #include "mainwindow.h"
 #include <QApplication>
 #include <QStyleFactory>
@@ -134,6 +135,14 @@ void MainWindow::onTestConnectionClicked()
     }
 }
 
+void MainWindow::onServiceListReceived(const QJsonArray& services)
+{
+    serviceList->clear();
+    for (const QJsonValue& service : services) {
+        serviceList->addItem(service.toString());
+    }
+}
+
 void MainWindow::initConnections()
 {
     connect(discoverButton, &QPushButton::clicked, this, &MainWindow::onDiscoverClicked);
@@ -145,6 +154,7 @@ void MainWindow::initConnections()
     connect(clientMgr, &ClientManager::systemInfoReceived, this, &MainWindow::onSystemInfoReceived);
     connect(clientMgr, &ClientManager::fileSystemReceived, this, &MainWindow::onFileSystemReceived);
     connect(clientMgr, &ClientManager::fileUploadFinished, this, &MainWindow::onFileUploadFinished);
+    connect(clientMgr, &ClientManager::serviceListReceived, this, &MainWindow::onServiceListReceived);
     connect(clientMgr, &ClientManager::fileDownloadFinished, this, [this](bool success, const QString& message) {
         if (success) {
             QMessageBox::information(this, "Успех", "Файл успешно скачан");
@@ -160,6 +170,7 @@ void MainWindow::initConnections()
     connect(removeUserButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
     connect(changePasswordButton, &QPushButton::clicked, this, &MainWindow::onManageUser);
     connect(serviceControlButton, &QPushButton::clicked, this, &MainWindow::onManageService);
+
 }
 
 void MainWindow::setDarkTheme()
@@ -498,6 +509,7 @@ void MainWindow::onConnected()
     userListWidget->clear();
     clientMgr->requestUserList();
     clientMgr->requestSystemInfo();
+    clientMgr->requestServiceList();
     clientMgr->requestFileSystem("/");
     statusLabel->setText("Подключено. Загрузка данных...");
     tabWidget->setCurrentIndex(1); // Переключение на вкладку пользователей
@@ -574,14 +586,20 @@ void MainWindow::onFileSystemReceived(const QJsonArray& files)
         QJsonObject file = fileVal.toObject();
         QTreeWidgetItem* item = new QTreeWidgetItem(fileSystemTree);
 
+        // Правильный формат размера
+        double sizeKB = file["size"].toDouble() / 1024.0;
+        QString sizeText = sizeKB > 1024 ?
+            QString("%1 MB").arg(sizeKB/1024, 0, 'f', 1) :
+            QString("%1 KB").arg(sizeKB, 0, 'f', 1);
+
         item->setText(0, file["name"].toString());
         item->setText(1, file["type"].toString());
-        item->setText(2, QString::number(file["size"].toDouble() / 1024, 'f', 1) + " KB");
+        item->setText(2, sizeText);
         item->setText(3, file["permissions"].toString());
         item->setText(4, file["owner"].toString());
         item->setText(5, file["group"].toString());
 
-        // Сохраняем полный путь в данных
+        // Сохраняем полный путь
         item->setData(0, Qt::UserRole, file["path"].toString());
     }
 }
